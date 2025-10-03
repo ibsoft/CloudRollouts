@@ -1,0 +1,20 @@
+
+{% extends "base.html" %}
+{% block content %}
+<h3>Edit Tenant #{{ t.id }}</h3>
+<form method="post" class="card card-body">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="row g-2">
+    <div class="col"><label class="form-label">Name</label><input class="form-control" name="name" value="{{ t.name }}"></div>
+    <div class="col"><label class="form-label">Slug</label><input class="form-control" name="slug" value="{{ t.slug }}"></div>
+    <div class="col">
+      <label class="form-label">Status</label>
+      <select name="status" class="form-select">
+        <option {% if t.status=='active' %}selected{% endif %}>active</option>
+        <option {% if t.status=='disabled' %}selected{% endif %}>disabled</option>
+      </select>
+    </div>
+    <div class="col-auto align-self-end"><button class="btn btn-primary">Save</button></div>
+  </div>
+</form>
+{% endblock %}

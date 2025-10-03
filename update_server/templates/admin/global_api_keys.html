@@ -1,0 +1,82 @@
+{# update_server/templates/admin/global_api_keys.html #}
+{% extends "base.html" %}
+{% block content %}
+
+<h3 class="mb-3"><i class="fa-solid fa-key me-2"></i>Global API Keys</h3>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fa-solid fa-plus me-2"></i>Create Global Key</h5>
+        <form method="post" action="{{ url_for('admin.global_api_keys') }}" class="row g-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="col-8">
+            <label class="form-label">Name</label>
+            <input class="form-control" name="name" placeholder="Global" value="Global">
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary">
+              <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Create
+            </button>
+            <span class="text-muted ms-2">Το plaintext εμφανίζεται μόνο μία φορά μετά τη δημιουργία.</span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% if msgs %}
+      <div class="mt-3">
+        {% for cat,msg in msgs %}
+          <div class="alert alert-{{ 'warning' if cat=='message' else cat }} mb-2">{{ msg }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fa-solid fa-list me-2"></i>Existing Global Keys</h5>
+        {% if keys and keys|length %}
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th style="width:80px;">ID</th>
+              <th>Name</th>
+              <th>Last4</th>
+              <th>Created</th>
+              <th style="width:100px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for k in keys %}
+            <tr>
+              <td>{{ k.id }}</td>
+              <td>{{ k.name }}</td>
+              <td><code>{{ k.last4 }}</code></td>
+              <td>{{ (k.created_at or '') }}</td>
+              <td class="text-end">
+                <form method="post" action="{{ url_for('admin.tenant_keys_delete', t_id=0, key_id=k.id) }}"
+                      onsubmit="return confirm('Delete global key {{ k.id }} (last4 {{ k.last4 }}) ?');" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm btn-outline-danger">
+                    <i class="fa-regular fa-trash-can me-1"></i>Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <p class="text-muted mb-0">No global keys yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

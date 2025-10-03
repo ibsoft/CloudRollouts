@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>API Keys for Tenant #{{ t.id }} — {{ t.name }}</h3>
+
+{% if new_key_plain %}
+<div class="alert alert-success">
+  <strong>Copy your API key now:</strong>
+  <code style="user-select: all;">{{ new_key_plain }}</code>
+  <div class="small text-muted">This is the only time you'll see the plaintext. It will not be shown again.</div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+  <div class="card-header">Create API Key</div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-md-4">
+        <label class="form-label">Name</label>
+        <input class="form-control" name="name" placeholder="e.g. Agent fleet key">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Expires at (YYYY-MM-DD or ISO)</label>
+        <input class="form-control" name="expires_at" placeholder="optional">
+      </div>
+      <div class="col-md-2 align-self-end">
+        <button class="btn btn-primary"><i class="fa fa-key"></i> Create</button>
+      </div>
+      <div class="col-md-2 align-self-end">
+        <a class="btn btn-secondary" href="{{ url_for('admin.tenants_list') }}">Back</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<table class="table table-striped">
+  <thead>
+    <tr><th>ID</th><th>Name</th><th>Last 4</th><th>Created</th><th>Expires</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for k in keys %}
+    <tr>
+      <td>{{ k.id }}</td>
+      <td>{{ k.name }}</td>
+      <td>{{ k.last4 }}</td>
+      <td>{{ k.created_at }}</td>
+      <td>{{ k.expires_at or '' }}</td>
+      <td>
+        <form method="post" action="/tenants/{{t.id}}/keys/{{k.id}}/delete" class="d-inline" onsubmit="return confirm('Delete this API key?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

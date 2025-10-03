@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>New Rollout</h3>
+
+<form method="post" class="card card-body">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="row g-3">
+    <div class="col-12">
+      <span class="badge text-bg-info">Tenant: {{ tenant_ctx_name or tenant_ctx_id }}</span>
+      <small class="text-muted ms-2">Rollouts are scoped to your tenant.</small>
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Package</label>
+      <select class="form-select" name="package_id" required>
+        {% for p in pkgs %}
+          <option value="{{p.id}}">{{p.name}} (#{{p.id}})</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-md-2">
+      <label class="form-label">Version</label>
+      <input class="form-control" name="version" placeholder="1.0.0" required>
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Start at</label>
+      <input class="form-control" name="start_at" placeholder="YYYY-MM-DD HH:MM (UTC)">
+    </div>
+
+    <div class="col-md-3">
+      <label class="form-label">Concurrency</label>
+      <input class="form-control" name="concurrency_limit" type="number" value="50">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">Waves (JSON array %)</label>
+      <input class="form-control" name="waves" value="[100]">
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">Maintenance window</label>
+      <input class="form-control" name="maintenance_window" value="any">
+      <small class="text-muted">
+        Use <code>any</code> or <code>HH:MM-HH:MM Europe/Athens</code>. Wraps over midnight allowed.
+      </small>
+    </div>
+
+    <div class="col-12">
+      <label class="form-label">Policy JSON</label>
+      <textarea class="form-control" name="policy_json" rows="4">{
+  "waveIndex": 0,
+  "allowedWeekdays": [1,2,3,4,5,6,7],
+  "minAgentVersion": "1.0.0.0",
+  "throttleSeconds": 15,
+  "deferOutsideWindow": true,
+  "maxRetriesPerDevice": 3
+}</textarea>
+      <small class="text-muted d-block mt-1">
+        Sanitized on save. Keys: <code>allowedWeekdays</code>, <code>minAgentVersion</code>, <code>throttleSeconds</code>, <code>deferOutsideWindow</code>, <code>maxRetriesPerDevice</code>, <code>waveIndex</code>.
+      </small>
+    </div>
+
+    <div class="col-12"><hr class="my-3"></div>
+
+    <div class="col-md-4">
+      <label class="form-label">Target Fleets (IDs, comma-separated)</label>
+      <input class="form-control" name="target_fleets" placeholder="e.g. 1,2">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Target Device IDs (comma-separated)</label>
+      <input class="form-control" name="target_devices" placeholder="e.g. 10,11,12" id="target-devices-field">
+    </div>
+
+    <div class="col-md-4">
+      <label class="form-label">Target Tags (comma-separated)</label>
+      <input class="form-control" name="target_tags" placeholder="e.g. win10,branchA">
+    </div>
+
+    <div class="col-12 mt-2">
+      <button class="btn btn-success"><i class="fa fa-rocket"></i> Create</button>
+    </div>
+  </div>
+</form>
+
+<hr class="my-4">
+
+<h5 class="mb-3">
+  Connected Devices
+  <small class="text-muted">(Select to append to “Target Device IDs”)</small>
+</h5>
+
+<div class="row g-2 align-items-end mb-3">
+  <div class="col-auto">
+    <label class="form-label mb-1">Tenant</label><br>
+    <span class="badge text-bg-secondary" id="devpick-tenant-badge">{{ tenant_ctx_name or tenant_ctx_id }}</span>
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-1">Search</label>
+    <input id="devpick-q" type="text" class="form-control" placeholder="id or hostname">
+  </div>
+  <div class="col-auto">
+    <label class="form-label mb-1">Per page</label>
+    <select id="devpick-perpage" class="form-select">
+      <option>10</option><option selected>20</option><option>50</option><option>100</option>
+    </select>
+  </div>
+  <div class="col-auto form-check mt-4">
+    <input id="devpick-online" class="form-check-input" type="checkbox" checked>
+    <label class="form-check-label" for="devpick-online">Online only (10m)</label>
+  </div>
+  <div class="col-auto">
+    <button id="devpick-refresh" type="button" class="btn btn-outline-primary">
+      <i class="fa fa-sync"></i> Refresh
+    </button>
+  </div>
+  <div class="col-auto ms-auto">
+    <button id="devpick-append" type="button" class="btn btn-success">
+      <i class="fa fa-plus"></i> Add Selected to Target Device IDs
+    </button>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle" id="devpick-table">
+    <thead class="table-light">
+      <tr>
+        <th style="width:36px;"><input type="checkbox" id="devpick-checkall"></th>
+        <th style="width:90px;">ID</th>
+        <th>Hostname</th>
+        <th style="width:90px;">Fleet</th>
+        <th style="width:140px;">Last Seen</th>
+        <th style="width:120px;">IP</th>
+        <th style="width:140px;">Agent</th>
+        <th style="width:140px;">OS</th>
+      </tr>
+    </thead>
+    <tbody id="devpick-tbody"></tbody>
+  </table>
+</div>
+
+<nav>
+  <ul class="pagination pagination-sm" id="devpick-pages"></ul>
+</nav>
+
+<script>
+(function() {
+  const tbody = document.getElementById('devpick-tbody');
+  const pager = document.getElementById('devpick-pages');
+  const chkAll = document.getElementById('devpick-checkall');
+  const tenantId = {{ tenant_ctx_id|int }};
+  const inpQ = document.getElementById('devpick-q');
+  const selPer = document.getElementById('devpick-perpage');
+  const chkOnline = document.getElementById('devpick-online');
+  const btnRefresh = document.getElementById('devpick-refresh');
+  const btnAppend = document.getElementById('devpick-append');
+  const targetField = document.getElementById('target-devices-field');
+
+  const selected = new Set();
+  let meta = {page:1, pages:1, per_page:20, total:0};
+
+  function fmt(s) { return s ?? ''; }
+
+  function rowHtml(d) {
+    const checked = selected.has(d.id) ? 'checked' : '';
+    return `
+      <tr>
+        <td><input class="devpick-cb form-check-input" type="checkbox" data-id="${d.id}" ${checked}></td>
+        <td>${d.id}</td>
+        <td>${fmt(d.hostname)}</td>
+        <td>${fmt(d.fleet_id)}</td>
+        <td><span class="text-nowrap">${fmt(d.last_seen_at)||'<span class="text-muted">—</span>'}</span></td>
+        <td>${fmt(d.last_ip)||'<span class="text-muted">—</span>'}</td>
+        <td>${fmt(d.agent_version)||'<span class="text-muted">—</span>'}</td>
+        <td>${fmt(d.os_version)||'<span class="text-muted">—</span>'}</td>
+      </tr>`;
+  }
+
+  function render(items) {
+    tbody.innerHTML = items.map(rowHtml).join('') || `<tr><td colspan="8" class="text-center text-muted">No devices</td></tr>`;
+    document.querySelectorAll('.devpick-cb').forEach(cb => {
+      cb.addEventListener('change', e => {
+        const id = parseInt(e.target.getAttribute('data-id'), 10);
+        if (e.target.checked) selected.add(id); else selected.delete(id);
+      });
+    });
+    chkAll.checked = false;
+  }
+
+  function renderPager() {
+    const p = meta.page, pages = meta.pages;
+    const li = [];
+    function pageLi(n, label, disabled, active) {
+      return `<li class="page-item ${disabled?'disabled':''} ${active?'active':''}">
+        <a class="page-link" href="#" data-page="${n}">${label}</a></li>`;
+    }
+    li.push(pageLi(Math.max(1,p-1), '&laquo;', p<=1, false));
+    const start = Math.max(1, p-2), end = Math.min(pages, p+2);
+    for (let i=start; i<=end; i++) li.push(pageLi(i, i, false, i===p));
+    li.push(pageLi(Math.min(pages,p+1), '&raquo;', p>=pages, false));
+    pager.innerHTML = li.join('');
+    pager.querySelectorAll('a.page-link').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const n = parseInt(a.getAttribute('data-page'),10);
+        if (n && n !== meta.page) fetchAndRender(n);
+      });
+    });
+  }
+
+  async function fetchAndRender(page=1) {
+    const q = encodeURIComponent(inpQ.value || '');
+    const per = parseInt(selPer.value || '20', 10);
+    const onlineOnly = chkOnline.checked ? '1' : '0';
+    const url = `/devices.json?tenant_id=${tenantId}&page=${page}&per_page=${per}&q=${q}&online_only=${onlineOnly}`;
+    const r = await fetch(url, {headers: {'Accept':'application/json'}});
+    if (!r.ok) { tbody.innerHTML = `<tr><td colspan="8" class="text-danger">Error ${r.status}</td></tr>`; return; }
+    const js = await r.json();
+    meta = js.meta || {page:1, pages:1, per_page:per, total:0};
+    render(js.items || []);
+    renderPager();
+  }
+
+  chkAll.addEventListener('change', () => {
+    document.querySelectorAll('.devpick-cb').forEach(cb => {
+      cb.checked = chkAll.checked;
+      const id = parseInt(cb.getAttribute('data-id'),10);
+      if (chkAll.checked) selected.add(id); else selected.delete(id);
+    });
+  });
+
+  btnRefresh.addEventListener('click', () => fetchAndRender(1));
+  [inpQ, selPer, chkOnline].forEach(el => {
+    el.addEventListener('change', () => fetchAndRender(1));
+    if (el === inpQ) el.addEventListener('keyup', e => { if (e.key === 'Enter') fetchAndRender(1); });
+  });
+
+  btnAppend.addEventListener('click', () => {
+    const field = targetField || document.querySelector('input[name="target_devices"], textarea[name="target_devices"]');
+    if (!field) { alert("Target Device IDs field not found."); return; }
+    const current = field.value ? field.value.split(',').map(s=>s.trim()).filter(Boolean) : [];
+    const merged = new Set(current);
+    [...selected].forEach(id => merged.add(String(id)));
+    field.value = [...merged].sort((a,b)=>Number(a)-Number(b)).join(', ');
+  });
+
+  // initial
+  fetchAndRender(1);
+})();
+</script>
+{% endblock %}

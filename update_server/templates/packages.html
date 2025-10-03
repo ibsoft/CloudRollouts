@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+<h3 class="mb-3"><i class="fa-solid fa-box-archive me-2"></i>Packages</h3>
+
+<table class="table table-striped align-middle">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Tenant</th>
+      <th>Name</th>
+      <th>Description</th>
+      <th>Versions</th>
+      <th>Latest</th>
+      <th>Size</th>
+      <th style="width:140px;"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in items %}
+      <tr>
+        <td>{{ p.id }}</td>
+        <td>
+        <span class="badge text-bg-light border">{{ tenant_ctx_id }}</span>
+        <small class="text-muted ms-1">{{ tenant_ctx_name }}</small>
+        </td>
+        <td>{{ p.name }}</td>
+        <td class="text-muted">{{ p.description or '—' }}</td>
+        <td>{{ version_counts.get(p.id) or 0 }}</td>
+        <td>{{ latest_versions.get(p.id, '—') }}</td>
+        <td>
+          {% set sz = latest_sizes.get(p.id, 0) %}
+          {% if sz and sz > 0 %}
+            {{ '%.1f' % (sz / 1048576.0) }}&nbsp;MB
+            <small class="text-muted">({{ sz }} B)</small>
+          {% else %}
+            <span class="text-muted">n/a</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          <form method="post"
+                action="{{ url_for('admin.package_delete', p_id=p.id) }}"
+                class="d-inline"
+                onsubmit="return confirm('Delete package and all versions?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger">
+              <i class="fa-regular fa-trash-can me-1"></i>Delete
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h5 class="mt-4"><i class="fa-solid fa-file-arrow-up me-2"></i>Upload Package (.zip)</h5>
+
+<form method="post" enctype="multipart/form-data"
+      action="{{ url_for('admin.packages_upload') }}"
+      class="card card-body">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="row g-2">
+    <div class="col-12 mb-1">
+  <span class="badge text-bg-info">
+    Tenant context: {{ tenant_ctx_name or tenant_ctx_id or '—' }}
+  </span>
+  <small class="text-muted ms-2">Uploads are scoped to your tenant.</small>
+</div>
+
+
+    <div class="col-md-4">
+      <input class="form-control" name="name" placeholder="Package Name" required>
+    </div>
+    <div class="col-md-3">
+      <input class="form-control" name="version" placeholder="Version (e.g. 1.0.1)" required>
+    </div>
+    <div class="col-md-5">
+      <input class="form-control" name="file" type="file" accept=".zip" required>
+    </div>
+
+    <div class="col-12">
+      <input class="form-control" name="description" placeholder="Description (optional)">
+    </div>
+
+    <div class="col-auto mt-2">
+      <button class="btn btn-success">
+        <i class="fa-solid fa-upload me-1"></i>Upload
+      </button>
+    </div>
+  </div>
+</form>
+{% endblock %}

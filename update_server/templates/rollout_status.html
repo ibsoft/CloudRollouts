@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h3 class="mb-2">
+  <i class="fa-solid fa-rocket me-2"></i>
+  {{ pkg.name if pkg else ('#' ~ r.package_id) }} {{ r.version }}
+  {% if tenant_ord %}
+    <span class="badge text-bg-light border ms-2" title="Per-tenant sequence">R#{{ tenant_ord }}</span>
+  {% endif %}
+  <span class="badge text-bg-light border ms-2" title="Database id">ID #{{ r.id }}</span>
+  <span class="badge text-bg-light border ms-1" title="Tenant id">Tenant #{{ r.tenant_id }}</span>
+</h3>
+
+<div class="row g-3 mb-3">
+  <div class="col"><div class="card"><div class="card-body">
+    <div class="text-muted">Total</div><div id="k-total" class="display-6">{{ total }}</div>
+  </div></div></div>
+  <div class="col"><div class="card"><div class="card-body">
+    <div class="text-muted">Pending</div><div id="k-pending" class="display-6">{{ pend }}</div>
+  </div></div></div>
+  <div class="col"><div class="card"><div class="card-body">
+    <div class="text-muted">Succeeded</div><div id="k-succeeded" class="display-6">{{ succ }}</div>
+  </div></div></div>
+  <div class="col"><div class="card"><div class="card-body">
+    <div class="text-muted">Failed</div><div id="k-failed" class="display-6">{{ fail }}</div>
+  </div></div></div>
+</div>
+
+<form method="post" action="/rollouts/{{ r.id }}/status" class="mb-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="btn-group">
+    <button name="action" value="pause" class="btn btn-outline-warning">Pause</button>
+    <button name="action" value="resume" class="btn btn-outline-success">Resume</button>
+    <button name="action" value="cancel" class="btn btn-outline-danger">Cancel</button>
+  </div>
+  <a href="{{ url_for('admin.rollouts_list') }}" class="btn btn-link ms-2">Back to rollouts</a>
+</form>
+
+<table class="table">
+  <tr><th>Status</th><td id="r-status">{{ r.status }}</td></tr>
+  <tr><th>Start</th><td id="r-start">{{ r.start_at }}</td></tr>
+  <tr><th>Waves</th><td><code id="r-waves">{{ r.waves }}</code></td></tr>
+  <tr><th>Concurrency</th><td id="r-concurrency">{{ r.concurrency_limit }}</td></tr>
+  <tr><th>Maintenance window</th><td id="r-mw">{{ r.maintenance_window }}</td></tr>
+  <tr><th>Policy</th><td><pre id="r-policy" class="mb-0">{{ r.policy_json|e }}</pre></td></tr>
+</table>
+
+<hr>
+<h3>Devices in this rollout</h3>
+<table class="table table-sm table-striped">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Device name</th>
+      <th>IP address</th>
+      <th>Status</th>
+      <th>Started</th>
+      <th>Finished</th>
+      <th>Agent</th>
+      <th>OS</th>
+    </tr>
+  </thead>
+  <tbody id="devices-tbody">
+  {% for row in device_rows %}
+    <tr>
+      <td>{{ row.device_id }}</td>
+      <td>{{ row.hostname }}</td>
+      <td>{{ row.ip or '' }}</td>
+      <td>
+        {% set st = (row.status or '')|lower %}
+        {% if st in ['succeeded','success','ok','completed','done'] %}
+          <span class="badge bg-success">succeeded</span>
+        {% elif st in ['failed','fail','error'] %}
+          <span class="badge bg-danger">failed</span>
+        {% elif st in ['pending','in_progress','installing','running'] %}
+          <span class="badge bg-warning text-dark">in&nbsp;progress</span>
+        {% else %}
+          <span class="badge bg-secondary">{{ row.status }}</span>
+        {% endif %}
+      </td>
+      <td>{{ row.started_at or "" }}</td>
+      <td>{{ row.finished_at or "" }}</td>
+      <td>{{ row.agent_version or "" }}</td>
+      <td>{{ row.os_version or "" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<script>
+(function(){
+  const rolloutId = {{ r.id }};
+  const url = `/rollouts/${rolloutId}/status.json`;
+  const fmt = s => !s ? "" : new Date(s).toLocaleString();
+
+  function badge(status) {
+    const s = (status || "").toLowerCase();
+    if (["succeeded","success","ok","completed","done"].includes(s)) {
+      return '<span class="badge bg-success">succeeded</span>';
+    } else if (["failed","fail","error"].includes(s)) {
+      return '<span class="badge bg-danger">failed</span>';
+    } else if (["pending","in_progress","installing","running"].includes(s)) {
+      return '<span class="badge bg-warning text-dark">in&nbsp;progress</span>';
+    }
+    return `<span class="badge bg-secondary">${status || ""}</span>`;
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(url, {headers: {"Accept":"application/json"}});
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Counters (already tenant-scoped for this rollout on the server)
+      document.getElementById("k-total").textContent     = data.counters.total ?? 0;
+      document.getElementById("k-pending").textContent   = data.counters.pending ?? 0;
+      document.getElementById("k-succeeded").textContent = data.counters.succeeded ?? 0;
+      document.getElementById("k-failed").textContent    = data.counters.failed ?? 0;
+
+      // Rollout meta
+      document.getElementById("r-status").textContent = data.rollout.status || "";
+      document.getElementById("r-start").textContent  = fmt(data.rollout.start_at);
+      document.getElementById("r-waves").textContent  = data.rollout.waves || "";
+      document.getElementById("r-concurrency").textContent = data.rollout.concurrency_limit ?? "";
+      document.getElementById("r-mw").textContent = data.rollout.maintenance_window || "";
+      document.getElementById("r-policy").textContent = data.rollout.policy_json || "";
+
+      // Devices table
+      const tbody = document.getElementById("devices-tbody");
+      tbody.innerHTML = (data.devices || []).map(d => `
+        <tr>
+          <td>${d.device_id ?? ""}</td>
+          <td>${d.hostname ?? ""}</td>
+          <td>${d.ip ?? ""}</td>
+          <td>${badge(d.status)}</td>
+          <td>${fmt(d.started_at)}</td>
+          <td>${fmt(d.finished_at)}</td>
+          <td>${d.agent_version ?? ""}</td>
+          <td>${d.os_version ?? ""}</td>
+        </tr>
+      `).join("");
+    } catch (e) {
+      // ignore transient errors
+    }
+  }
+
+  // First paint fast, then poll every 3s
+  refresh();
+  setInterval(refresh, 3000);
+})();
+</script>
+
+{% endblock %}

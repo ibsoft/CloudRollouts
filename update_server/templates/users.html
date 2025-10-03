@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Users — UpdateServer{% endblock %}
+{% block content %}
+<h3 class="mb-3"><i class="fa-solid fa-users-gear me-2"></i>Users</h3>
+
+<table class="table table-striped align-middle">
+  <thead>
+    <tr>
+      <th style="width:72px;">ID</th>
+      <th>Email</th>
+      <th>Name</th>
+      <th>Status</th>
+      <th style="width:220px;"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.id }}</td>
+      <td>{{ u.email }}</td>
+      <td>{{ u.full_name or '' }}</td>
+      <td>
+        {% if u.status == 'active' %}
+          <span class="badge bg-success">active</span>
+        {% else %}
+          <span class="badge bg-secondary">{{ u.status }}</span>
+        {% endif %}
+      </td>
+      <td class="text-end">
+        <form method="post" action="{{ url_for('admin.users_toggle', user_id=u.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-secondary">Toggle</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.users_delete', user_id=u.id) }}" class="d-inline"
+              onsubmit="return confirm('Delete user?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="card card-body mt-4">
+  <h5 class="mb-3"><i class="fa fa-user-plus me-2"></i>Create User</h5>
+  <form method="post" action="{{ url_for('admin.users_list') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row g-2">
+      <div class="col-md-3">
+        <label class="form-label">Email</label>
+        <input class="form-control" name="email" type="email" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Full name</label>
+        <input class="form-control" name="full_name" placeholder="Optional">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Password</label>
+        <input class="form-control" name="password" type="password" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Role</label>
+        <select name="role" class="form-select">
+          <option>Viewer</option>
+          <option>Ops</option>
+          <option>Admin</option>
+        </select>
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">Tenant</label>
+        <select name="tenant_id" class="form-select" required>
+          {% for t in tenants %}
+            <option value="{{ t.id }}">{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 mt-2">
+        <button class="btn btn-primary"><i class="fa fa-user-plus"></i> Create</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

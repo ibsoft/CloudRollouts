@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Rollouts</h3>
+  <a class="btn btn-success" href="/rollouts/new"><i class="fa fa-plus"></i> New</a>
+</div>
+<table class="table table-striped">
+  <thead><tr><th>ID</th><th>Tenant</th><th>Package</th><th>Version</th><th>Start</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+    {% for r, pkgname in items %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.tenant_id }}</td>
+      <td>{{ pkgname }}</td>
+      <td>{{ r.version }}</td>
+      <td>{{ r.start_at }}</td>
+      <td>{{ r.status }}</td>
+      <td>
+        <a class="btn btn-sm btn-outline-primary" href="/rollouts/{{r.id}}">View</a>
+        <a class="btn btn-sm btn-outline-secondary" href="/rollouts/{{r.id}}/edit">Edit</a>
+        <form method="post" action="/rollouts/{{r.id}}/delete" class="d-inline" onsubmit="return confirm('Delete rollout?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

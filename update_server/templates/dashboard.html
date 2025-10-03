@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row g-3">
+  <div class="col"><div class="card shadow-sm"><div class="card-body">
+    <h5 class="card-title"><i class="fa-solid fa-users"></i> Tenants</h5>
+    <p class="display-6">{{ tenants }}</p>
+  </div></div></div>
+  <div class="col"><div class="card shadow-sm"><div class="card-body">
+    <h5 class="card-title"><i class="fa-solid fa-desktop"></i> Devices</h5>
+    <p class="display-6">{{ devices }}</p>
+  </div></div></div>
+  <div class="col"><div class="card shadow-sm"><div class="card-body">
+    <h5 class="card-title"><i class="fa-solid fa-box"></i> Packages</h5>
+    <p class="display-6">{{ pkgs }}</p>
+  </div></div></div>
+  <div class="col"><div class="card shadow-sm"><div class="card-body">
+    <h5 class="card-title"><i class="fa-solid fa-rocket"></i> Rollouts</h5>
+    <p class="display-6">{{ rollouts }}</p>
+  </div></div></div>
+</div>
+{% endblock %}

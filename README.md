@@ -1,6 +1,6 @@
-# Update Server — Flask MVP
+# CloudRollouts
 
-Multi-tenant update server για στόλους Windows. Admin UI (Bootstrap), agent API, artifacts με Range streaming, health/ready, metrics, Swagger, rate-limits, scheduler.
+Multi-tenant update server για στόλους Windows/Linux. Admin UI (Bootstrap), agent API, artifacts με Range streaming, health/ready, metrics, Swagger, rate-limits, scheduler.
 
 
 

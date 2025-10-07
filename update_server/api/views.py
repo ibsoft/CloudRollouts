@@ -1,6 +1,7 @@
 # update_server/api/views.py
 from __future__ import annotations
 
+
 """
 API layer για agents, artifacts και rollouts.
 
@@ -21,7 +22,7 @@ import datetime as dt
 from datetime import datetime as _dt
 from glob import glob
 from typing import Optional
-
+from sqlalchemy import select, text as sqltext
 from flask import Blueprint, request, jsonify, g, current_app
 
 from ..extensions import db, limiter
@@ -530,6 +531,8 @@ def agents_install_results():
     """
     Παραλαβή αποτελεσμάτων εγκατάστασης από agent. Γίνεται ομαλοποίηση status,
     αντιστοίχιση με rollout όπου είναι δυνατό, και ενημέρωση χρονικών στιγμών.
+    Επιπλέον: όταν μια εγκατάσταση μεταβαίνει σε 'succeeded', χρεώνεται ο tenant
+    κατά το admin-fixed rate ανά συσκευή (μία φορά).
     """
     data = request.get_json(silent=True) or {}
     device_id = data.get("deviceId")
@@ -575,9 +578,35 @@ def agents_install_results():
         if r and _device_matches_rollout_targets(r, device_id):
             di.rollout_id = r.id
 
+    prev_status = di.status
     di.status = status
     if status in {"succeeded", "failed"} and getattr(di, "finished_at", None) is None:
         di.finished_at = _dt.utcnow()
 
+    # Γράψε τις αλλαγές του DI στο transaction state πριν το billing
+    db.session.flush()
+
+    if status == "succeeded" and prev_status != "succeeded":
+        try:
+            row = db.session.execute(
+                sqltext("SELECT COALESCE(pricing_rate_cents,0), COALESCE(outstanding_cents,0) FROM tenant WHERE id=:id"),
+                {"id": g.tenant_id},
+            ).first()
+            if row:
+                rate = int(row[0] or 0)
+                if rate > 0:
+                    db.session.execute(
+                        sqltext("UPDATE tenant SET outstanding_cents = COALESCE(outstanding_cents,0) + :r WHERE id=:id"),
+                        {"r": rate, "id": g.tenant_id},
+                    )
+                    current_app.logger.info("billing.charge ok tenant_id=%s +%s cents", g.tenant_id, rate)
+                else:
+                    current_app.logger.info("billing.charge skipped tenant_id=%s rate=0", g.tenant_id)
+            else:
+                current_app.logger.warning("billing.charge skipped: tenant %s not found", g.tenant_id)
+        except Exception:
+            current_app.logger.exception("billing.charge failed tenant_id=%s", g.tenant_id)
+
     db.session.commit()
     return jsonify({"ok": True})
+

@@ -1,3 +1,4 @@
+{# update_server/templates/dashboard.html #}
 {% extends "base.html" %}
 {% block content %}
 <div class="row g-3">
@@ -17,5 +18,317 @@
     <h5 class="card-title"><i class="fa-solid fa-rocket"></i> Rollouts</h5>
     <p class="display-6">{{ rollouts }}</p>
   </div></div></div>
+
+  {# --- Pricing card only for non-admins --- #}
+  {% if 'Admin' not in g.roles %}
+  <div class="col">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fa-solid fa-coins"></i> Pricing</h5>
+        <div class="mb-1">Rate per device: <span id="u_rate" class="text-success">—</span></div>
+        <div class="mb-2">Current cost: <strong id="u_out" class="text-danger">0.00 EUR</strong></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
+
+<div class="row g-3 mt-2">
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title mb-2"><i class="fa-solid fa-microchip me-1"></i> CPU</h5>
+        <div class="d-flex align-items-baseline">
+          <div class="display-6 me-2" id="cpu_val">—%</div>
+        </div>
+        <div class="progress mt-2" style="height: 10px;">
+          <div id="cpu_bar" class="progress-bar bg-primary" role="progressbar" style="width:0%"></div>
+        </div>
+        <small class="text-muted">Updated <span id="cpu_ts">—</span></small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title mb-2"><i class="fa-solid fa-memory me-1"></i> RAM</h5>
+        <div class="d-flex align-items-baseline">
+          <div class="display-6 me-2" id="ram_val">—%</div>
+        </div>
+        <div class="progress mt-2" style="height: 10px;">
+          <div id="ram_bar" class="progress-bar bg-success" role="progressbar" style="width:0%"></div>
+        </div>
+        <small class="text-muted">Updated <span id="ram_ts">—</span></small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title mb-2"><i class="fa-solid fa-right-left me-1"></i> Network</h5>
+        <div class="d-flex flex-column">
+          <div><span class="badge bg-secondary me-1">In</span><span id="net_in_val">—</span>/s</div>
+          <div class="progress mt-1" style="height: 8px;">
+            <div id="net_in_bar" class="progress-bar" role="progressbar" style="width:0%"></div>
+          </div>
+          <div class="mt-2"><span class="badge bg-secondary me-1">Out</span><span id="net_out_val">—</span>/s</div>
+          <div class="progress mt-1" style="height: 8px;">
+            <div id="net_out_bar" class="progress-bar" role="progressbar" style="width:0%"></div>
+          </div>
+        </div>
+        <small class="text-muted d-block mt-2">Updated <span id="net_ts">—</span></small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title mb-2"><i class="fa-solid fa-tachograph-digital me-1"></i> Latency</h5>
+        <div class="d-flex align-items-baseline">
+          <div class="display-6 me-2" id="rtt_val">— ms</div>
+        </div>
+        <div class="progress mt-2" style="height: 10px;">
+          <div id="rtt_bar" class="progress-bar bg-warning" role="progressbar" style="width:0%"></div>
+        </div>
+        <small class="text-muted">Updated <span id="rtt_ts">—</span></small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-3">
+  <div class="col-12">
+    <div id="connected-devices" data-refresh="8">
+      <div class="card shadow-sm">
+        <div id="connected-devices-body" class="card-body">
+          {% include "partials/connected_devices_fragment.html" %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function fmtBytes(b){
+    if(!isFinite(b)) return "—";
+    const u=['B','KB','MB','GB','TB']; let i=0;
+    while(b>=1024 && i<u.length-1){ b/=1024; i++; }
+    const v = (b<10? b.toFixed(2): b<100? b.toFixed(1): Math.round(b));
+    return v + " " + u[i];
+  }
+  function tsFmt(s){ try{ return new Date(s*1000).toLocaleTimeString(); }catch{ return "—"; } }
+  function clamp(x, min, max){ return Math.max(min, Math.min(x, max)); }
+
+  const cpuVal = document.getElementById('cpu_val');
+  const cpuBar = document.getElementById('cpu_bar');
+  const cpuTs  = document.getElementById('cpu_ts');
+
+  const ramVal = document.getElementById('ram_val');
+  const ramBar = document.getElementById('ram_bar');
+  const ramTs  = document.getElementById('ram_ts');
+
+  const netInVal = document.getElementById('net_in_val');
+  const netOutVal= document.getElementById('net_out_val');
+  const netInBar = document.getElementById('net_in_bar');
+  const netOutBar= document.getElementById('net_out_bar');
+  const netTs    = document.getElementById('net_ts');
+
+  const rttVal = document.getElementById('rtt_val');
+  const rttBar = document.getElementById('rtt_bar');
+  const rttTs  = document.getElementById('rtt_ts');
+
+  const WIN = 60, EMA = 0.3;
+  const buf = []; let emaIn = 0, emaOut = 0;
+
+  function pushNet(ts, nin, nout){
+    emaIn  = EMA * nin  + (1-EMA) * emaIn;
+    emaOut = EMA * nout + (1-EMA) * emaOut;
+    buf.push({ts, nin, nout});
+    const cutoff = Date.now()/1000 - WIN;
+    while (buf.length && buf[0].ts < cutoff) buf.shift();
+  }
+  function dynamicCap(){
+    let peak = 0;
+    for (const s of buf){ if (s.nin>peak) peak=s.nin; if (s.nout>peak) peak=s.nout; }
+    const minCap = 256*1024, maxCap = 100*1024*1024;
+    return clamp(peak*1.2, minCap, maxCap);
+  }
+
+  let lastDraw = 0;
+  function updateUI(s){
+    const now = performance.now();
+    if (now - lastDraw < 90) return;
+    lastDraw = now;
+
+    const cpu = clamp(s.cpu || 0, 0, 100);
+    cpuVal.textContent = cpu.toFixed(0) + '%';
+    cpuBar.style.width = cpu + '%';
+    cpuTs.textContent = tsFmt(s.ts);
+
+    const ram = clamp(s.ram || 0, 0, 100);
+    ramVal.textContent = ram.toFixed(0) + '%';
+    ramBar.style.width = ram + '%';
+    ramTs.textContent = tsFmt(s.ts);
+
+    const nin  = Math.max(0, s.netIn  || 0);
+    const nout = Math.max(0, s.netOut || 0);
+    pushNet(s.ts, nin, nout);
+
+    netInVal.textContent  = fmtBytes(nin);
+    netOutVal.textContent = fmtBytes(nout);
+
+    const cap = dynamicCap();
+    const minPct = 0.03;
+    const pin = cap>0 ? clamp(emaIn/cap, 0, 1) : 0;
+    const pout= cap>0 ? clamp(emaOut/cap,0, 1) : 0;
+
+    netInBar.style.width  = ((pin  > 0 ? Math.max(pin,  minPct) : 0)*100).toFixed(1) + '%';
+    netOutBar.style.width = ((pout > 0 ? Math.max(pout, minPct) : 0)*100).toFixed(1) + '%';
+    netTs.textContent = tsFmt(s.ts);
+
+    const rtt = s.rtt >= 0 ? s.rtt : 0;
+    rttVal.textContent = (rtt>100 ? rtt.toFixed(0) : rtt.toFixed(1)) + ' ms';
+    rttBar.style.width = clamp((rtt/300)*100, 0, 100) + '%';
+    rttTs.textContent = tsFmt(s.ts);
+  }
+
+  function fallbackPoll(){
+    async function tick(){
+      try{
+        const r = await fetch('/api/stats/live', {cache:'no-store'});
+        if(r.ok && r.status !== 204){
+          updateUI(await r.json());
+        }
+      }catch(_){}
+      setTimeout(tick, 1000);
+    }
+    tick();
+  }
+
+  try {
+    const es = new EventSource('/api/stats/stream');
+    es.onmessage = (ev) => { try { updateUI(JSON.parse(ev.data)); } catch(_e){} };
+    es.onerror = () => { es.close(); fallbackPoll(); };
+  } catch(e) {
+    fallbackPoll();
+  }
+})();
+</script>
+
+<script>
+/* AJAX ανανέωση connected devices: fragment + intercept σε search/pagination */
+(function(){
+  const wrap   = document.getElementById('connected-devices');
+  const bodyEl = document.getElementById('connected-devices-body');
+  if (!wrap || !bodyEl) return;
+
+  const intervalSec = Math.max(3, parseInt(wrap.dataset.refresh || '10', 10));
+
+  function buildUrl(page, per, q){
+    const u = new URL("{{ url_for('admin.connected_devices_fragment') }}", window.location.origin);
+    if (page) u.searchParams.set('page', page);
+    if (per)  u.searchParams.set('per', per);
+    if (q)    u.searchParams.set('q', q);
+    return u.toString();
+  }
+
+  async function loadFragment(page, per, q){
+    try {
+      const res = await fetch(buildUrl(page, per, q), {cache:'no-store', headers:{'X-Requested-With':'fetch'}});
+      if (!res.ok) return;
+      const html = await res.text();
+      bodyEl.innerHTML = html;
+      attachHandlers();
+    } catch(_) {}
+  }
+
+  function activePage(){
+    const el = bodyEl.querySelector('.pagination .page-item.active .page-link');
+    return el ? parseInt(el.textContent.trim(), 10) : 1;
+  }
+  function currentPer(){
+    const perIn = bodyEl.querySelector('input[name="per"]');
+    return perIn ? parseInt(perIn.value, 10) : 10;
+  }
+  function currentQ(){
+    const qIn = bodyEl.querySelector('input[name="q"]');
+    return qIn ? qIn.value.trim() : '';
+  }
+
+  function attachHandlers(){
+    const form = bodyEl.querySelector('#cd-search');
+    if (form){
+      form.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        loadFragment(1, currentPer(), currentQ());
+      });
+      const clearBtn = form.querySelector('button[data-clear]');
+      if (clearBtn){
+        clearBtn.addEventListener('click', () => {
+          const qIn = form.querySelector('input[name="q"]');
+          if (qIn) qIn.value = '';
+          loadFragment(1, currentPer(), '');
+        });
+      }
+    }
+    bodyEl.querySelectorAll('.pagination a.page-link[data-page]').forEach(a => {
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const p = parseInt(a.getAttribute('data-page') || '', 10);
+        if (Number.isFinite(p)) loadFragment(p, currentPer(), currentQ());
+      });
+    });
+  }
+
+  function userInteracting(){
+    const ae = document.activeElement;
+    if (document.hidden) return true;
+    if (ae && bodyEl.contains(ae) && ['INPUT','SELECT','TEXTAREA'].includes(ae.tagName)) return true;
+    if (bodyEl.matches(':hover')) return true;
+    return false;
+  }
+
+  setInterval(() => {
+    if (!userInteracting()) {
+      loadFragment(activePage(), currentPer(), currentQ());
+    }
+  }, intervalSec * 1000);
+
+  attachHandlers();
+})();
+</script>
+
+{% if 'Admin' not in g.roles %}
+<script>
+/*
+  Live Pricing — polls only when the pricing elements exist (non-admin view).
+*/
+(function(){
+  const rateEl  = document.getElementById('u_rate');
+  const outEl   = document.getElementById('u_out');
+  if (!rateEl || !outEl) return;
+
+  function money(v){ const n = Number(v); return (isFinite(n) ? n.toFixed(2) : '0.00') + ' EUR'; }
+
+  async function tick(){
+    try{
+      const r = await fetch('/billing/user/price_and_cost', {cache:'no-store', headers:{'X-Requested-With':'fetch'}});
+      if (!r.ok) throw new Error('status '+r.status);
+      const d = await r.json();
+      rateEl.textContent = money(d.rate);
+      outEl.textContent  = money(d.outstanding);
+      setTimeout(tick, 5000);
+    }catch(_e){
+      setTimeout(tick, 10000);
+    }
+  }
+  tick();
+})();
+</script>
+{% endif %}
+
 {% endblock %}

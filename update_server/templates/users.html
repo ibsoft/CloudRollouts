@@ -9,16 +9,32 @@
       <th style="width:72px;">ID</th>
       <th>Email</th>
       <th>Name</th>
+      <th>Tenant</th>
       <th>Status</th>
       <th style="width:220px;"></th>
     </tr>
   </thead>
   <tbody>
-    {% for u in users %}
+  {% for u in users %}
+    {# Βρες τον tenant με βάση το u.tenant_id #}
+    {% set t = (tenants | selectattr('id','equalto', u.tenant_id) | list | first) %}
     <tr>
       <td>{{ u.id }}</td>
       <td>{{ u.email }}</td>
-      <td>{{ u.full_name or '' }}</td>
+      <td>{{ u.full_name or "" }}</td>
+
+      {% set t = (tenants | selectattr('id','equalto', u.tenant_id) | list | first)
+           if u.tenant_id is not none
+           else (user_tenants.get(u.id) if user_tenants else None) %}
+      <td>
+        {% if t %}
+          <span class="badge bg-secondary">{{ t.name }}</span>
+          <small class="text-muted ms-1">/{{ t.slug }}</small>
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </td>
+      {# Status — μένει στη θέση του, μετά το Tenant #}
       <td>
         {% if u.status == 'active' %}
           <span class="badge bg-success">active</span>
@@ -26,20 +42,22 @@
           <span class="badge bg-secondary">{{ u.status }}</span>
         {% endif %}
       </td>
+
+      {# Actions — όπως τα έχεις (Toggle/Delete) #}
       <td class="text-end">
         <form method="post" action="{{ url_for('admin.users_toggle', user_id=u.id) }}" class="d-inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="btn btn-sm btn-outline-secondary">Toggle</button>
         </form>
-        <form method="post" action="{{ url_for('admin.users_delete', user_id=u.id) }}" class="d-inline"
-              onsubmit="return confirm('Delete user?');">
+        <form method="post" action="{{ url_for('admin.users_delete', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('Delete user {{ u.email }} ?');">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-sm btn-outline-danger">Delete</button>
+          <button class="btn btn-sm btn-danger">Delete</button>
         </form>
       </td>
     </tr>
-    {% endfor %}
-  </tbody>
+  {% endfor %}
+</tbody>
+
 </table>
 
 <div class="card card-body mt-4">

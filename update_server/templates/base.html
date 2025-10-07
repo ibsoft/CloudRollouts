@@ -51,34 +51,43 @@
 
         {# ---------- Admin-only section (no Packages/Rollouts for Admin) ---------- #}
         {% if 'Admin' in (g.roles or []) %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.tenants','admin.tenants_edit'] %}active{% endif %}"
-               href="{{ url_for('admin.tenants') }}">
-              <i class="fa-solid fa-building-user"></i> Tenants
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint=='admin.users' %}active{% endif %}"
-               href="{{ url_for('admin.users') }}">
-              <i class="fa-solid fa-users-gear"></i> Users
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint=='admin.global_api_keys' %}active{% endif %}"
-               href="{{ url_for('admin.global_api_keys') }}">
-              <i class="fa-solid fa-key"></i> Global API Keys
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('admin.metrics') }}">
-              <i class="fa-solid fa-chart-line"></i> Metrics
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('admin.health') }}">
-              <i class="fa-solid fa-heart-pulse"></i> Health
-            </a>
-          </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint in ['admin.tenants','admin.tenants_edit'] %}active{% endif %}"
+            href="{{ url_for('admin.tenants') }}">
+            <i class="fa-solid fa-building-user"></i> Tenants
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='admin.users' %}active{% endif %}"
+            href="{{ url_for('admin.users') }}">
+            <i class="fa-solid fa-users-gear"></i> Users
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='admin.global_api_keys' %}active{% endif %}"
+            href="{{ url_for('admin.global_api_keys') }}">
+            <i class="fa-solid fa-key"></i> Global API Keys
+          </a>
+        </li>
+
+        <!-- NEW: Pricing -->
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='billing.admin_billing_page' %}active{% endif %}"
+            href="{{ url_for('billing.admin_billing_page', tenant_id=(g.tenant_ctx_id or 1)) }}">
+            <i class="fa-solid fa-coins"></i> Pricing
+          </a>
+        </li>
+
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('admin.metrics') }}">
+            <i class="fa-solid fa-chart-line"></i> Metrics
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="{{ url_for('admin.health') }}">
+            <i class="fa-solid fa-heart-pulse"></i> Health
+          </a>
+        </li>
         {% endif %}
 
         {# ---------- Ops-only: Packages ---------- #}
@@ -103,25 +112,31 @@
       </ul>
 
       <!-- Right: tenant/role badges + theme + user menu -->
-      <div class="d-flex align-items-center gap-2">
-        {% if g.tenant_ctx_name or g.tenant_ctx_id %}
-          <span class="badge text-bg-light border" title="Tenant context">
-            <i class="fa-solid fa-building me-1"></i>
-            {{ g.tenant_ctx_name or ('Tenant #' ~ g.tenant_ctx_id) }}
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+
+        {# Hide tenant badge for Admin users #}
+        {% if 'Admin' not in (g.roles or []) and (g.tenant_ctx_name or g.tenant_ctx_id) %}
+          <span class="navbar-text d-inline-flex align-items-center gap-1 me-1">
+            <span class="badge text-bg-secondary border align-middle" title="Tenant context">
+              <i class="fa-solid fa-building me-1"></i>
+              {{ g.tenant_ctx_name or ('Tenant #' ~ g.tenant_ctx_id) }}
+            </span>
           </span>
         {% endif %}
 
         {% if g.roles %}
-          <span class="badge text-bg-secondary" title="Your roles">
-            <i class="fa-solid fa-id-badge me-1"></i>{{ (g.roles|join(', ')) }}
+          <span class="navbar-text d-inline-flex align-items-center gap-1 me-1">
+            <span class="badge text-bg-secondary align-middle" title="Your roles">
+              <i class="fa-solid fa-id-badge me-1"></i>{{ (g.roles|join(', ')) }}
+            </span>
           </span>
         {% endif %}
 
-        <button id="themeToggle" class="btn btn-outline-secondary btn-sm" title="Toggle theme">
+        <button id="themeToggle" class="btn btn-outline-secondary btn-sm ms-1" title="Toggle theme">
           <i class="fa-solid fa-circle-half-stroke"></i>
         </button>
 
-        <div class="dropdown">
+        <div class="dropdown ms-1">
           <button class="btn btn-outline-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="fa-solid fa-user"></i>
             {{ (g.user_email or current_user.email) if current_user.is_authenticated else 'Account' }}
@@ -137,6 +152,7 @@
           </ul>
         </div>
       </div>
+
     </div>
 
   </div>
@@ -171,10 +187,13 @@
       <span title="Environment"><i class="fa-solid fa-server me-1"></i>{{ config.get('ENV','prod') }}</span>
     </div>
     <div class="text-muted small">
-      <a class="link-secondary text-decoration-none me-3" href="https://example.com/docs" target="_blank" rel="noreferrer">
+      <a class="link-secondary text-decoration-none me-3"
+        href="{{ config['DOCS_URL'] }}" target="_blank" rel="noreferrer">
         <i class="fa-solid fa-book me-1"></i>Docs
       </a>
-      <a class="link-secondary text-decoration-none" href="mailto:support@example.com">
+
+      <a class="link-secondary text-decoration-none"
+        href="{{ config['SUPPORT_URL'] }}">
         <i class="fa-solid fa-life-ring me-1"></i>Support
       </a>
     </div>
@@ -196,5 +215,25 @@
     });
   })();
 </script>
+
+<script>
+  // Auto-dismiss flash messages after ~5s, with small stagger and pause-on-hover
+  document.addEventListener('DOMContentLoaded', () => {
+    const alerts = document.querySelectorAll('.alert.alert-dismissible');
+    alerts.forEach((el, i) => {
+      const initialDelay = 5000 + i * 250;
+      let timer = setTimeout(() => {
+        bootstrap.Alert.getOrCreateInstance(el).close();
+      }, initialDelay);
+      el.addEventListener('mouseenter', () => clearTimeout(timer));
+      el.addEventListener('mouseleave', () => {
+        timer = setTimeout(() => {
+          bootstrap.Alert.getOrCreateInstance(el).close();
+        }, 1500);
+      });
+    });
+  });
+</script>
+
 </body>
 </html>

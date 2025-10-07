@@ -1,0 +1,6 @@
+{# Include this inside your admin navbar/menu. It does not change existing items. #}
+<li class="nav-item">
+  <a class="nav-link" href="{{ url_for('billing.admin_billing_page') }}?tenant_id={{ g.tenant_ctx_id or 1 }}">
+    <i class="fa-solid fa-coins me-1"></i> Pricing
+  </a>
+</li>

@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+  <div class="card mt-3">
+    <div class="card-body">
+      <h5 class="card-title">Admin • Pricing by tenant</h5>
+      <form method="post" action="{{ url_for('billing.admin_billing_page', tenant_id=tenant.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label">Tenant</label>
+            <select class="form-select" onchange="location.href='{{ url_for('billing.admin_billing_page') }}?tenant_id='+this.value">
+              {% for t in tenants %}
+                <option value="{{ t.id }}" {% if t.id == tenant.id %}selected{% endif %}>{{ t.name }} (ID {{ t.id }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Rate (EUR)</label>
+            <input class="form-control" name="rate_eur" value="{{ rate_eur or 0 }}" required>
+            <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
+          </div>
+          <div class="col-md-4">
+            <button class="btn btn-primary">Save</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

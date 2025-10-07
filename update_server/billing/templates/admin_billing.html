@@ -1,0 +1,143 @@
+{# update_server/billing/templates/admin_billing.html #}
+{% extends 'base.html' %}
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h5 class="card-title mb-3">
+        <i class="fa-solid fa-screwdriver-wrench me-2"></i> Admin • Pricing by tenant
+      </h5>
+
+      <!-- Single form; the Reset button posts to a different endpoint via formaction -->
+      <form method="post" action="{{ url_for('billing.admin_billing_save') }}" class="row g-3 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <div class="col-12 col-md-4">
+          <label class="form-label">Tenant</label>
+          <select id="tenantSelect" class="form-select">
+            {% for t in tenants %}
+              <option value="{{ t.id }}" {% if t.id == tenant.id %}selected{% endif %}>
+                {{ t.name }} (ID {{ t.id }})
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12 col-md-4">
+          <label class="form-label">Rate (EUR)</label>
+          <input class="form-control" name="rate_eur" value="{{ rate_eur or 0 }}" required>
+          <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
+        </div>
+
+        <div class="col-12 col-md-4 d-flex gap-2">
+          <button class="btn btn-primary">
+            <i class="fa-solid fa-floppy-disk me-1"></i> Save
+          </button>
+
+          <!-- Posts the same form data to the reset endpoint -->
+          <button type="submit"
+                  class="btn btn-outline-danger"
+                  formmethod="post"
+                  formaction="{{ url_for('billing.admin_reset_outstanding') }}"
+                  onclick="return confirm('Reset outstanding to 0.00 EUR?');">
+            <i class="fa-solid fa-rotate-left me-1"></i> Reset to 0.00
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+        <h6 class="card-title mb-2 mb-md-0">
+          <i class="fa-solid fa-table me-2"></i> Tenants — Current cost
+        </h6>
+        <div>
+          <form method="get" class="d-inline-block">
+            <input type="hidden" name="tenant_id" value="{{ tenant.id }}">
+            <label class="me-1">Per page</label>
+            <select name="per" class="form-select d-inline-block" style="width:auto" onchange="this.form.submit()">
+              {% for k in [10,20,30,50] %}
+                <option value="{{ k }}" {% if pagination.per == k %}selected{% endif %}>{{ k }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:80px;">ID</th>
+              <th><i class="fa-regular fa-building me-1"></i> Tenant</th>
+              <th class="text-end"><i class="fa-solid fa-tags me-1"></i> Rate (EUR)</th>
+              <th class="text-end"><i class="fa-solid fa-coins me-1"></i> Outstanding (EUR)</th>
+              <th class="text-end" style="width: 1%; white-space: nowrap;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.tenant_id }}</td>
+              <td>{{ r.tenant_name }}</td>
+              <td class="text-end">{{ (r.rate_cents or 0) / 100 }}</td>
+              <td class="text-end">{{ (r.outstanding_cents or 0) / 100 }}</td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{{ url_for('billing.admin_billing_page', tenant_id=r.tenant_id) }}">
+                  <i class="fa-regular fa-pen-to-square"></i>
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <nav aria-label="Pagination" class="mt-3">
+        <ul class="pagination mb-0">
+          <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+            <a class="page-link"
+               href="{{ url_for('billing.admin_billing_page', tenant_id=tenant.id, page=pagination.page-1, per=pagination.per) }}"
+               tabindex="-1" aria-disabled="{{ 'true' if not pagination.has_prev else 'false' }}">
+              &laquo;
+            </a>
+          </li>
+
+          {% set start = (pagination.page-2) if pagination.page>2 else 1 %}
+          {% set end = (pagination.page+2) if pagination.page+2 <= pagination.pages else pagination.pages %}
+          {% for p in range(start, end+1) %}
+            <li class="page-item {% if p == pagination.page %}active{% endif %}">
+              <a class="page-link"
+                 href="{{ url_for('billing.admin_billing_page', tenant_id=tenant.id, page=p, per=pagination.per) }}">{{ p }}</a>
+            </li>
+          {% endfor %}
+
+          <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+            <a class="page-link"
+               href="{{ url_for('billing.admin_billing_page', tenant_id=tenant.id, page=pagination.page+1, per=pagination.per) }}">
+              &raquo;
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    var sel = document.getElementById('tenantSelect');
+    if (!sel) return;
+    sel.addEventListener('change', function(){
+      var base = "{{ url_for('billing.admin_billing_page') }}";
+      var next = base + "?tenant_id=" + encodeURIComponent(sel.value);
+      window.location.href = next;
+    });
+  })();
+</script>
+{% endblock %}

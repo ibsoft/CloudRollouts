@@ -23,6 +23,16 @@ import hashlib
 from pathlib import Path
 from typing import Optional, Set
 
+from flask import request, render_template, url_for
+from flask_login import login_required, current_user
+from sqlalchemy import func, or_, literal_column
+import datetime as dt
+
+
+from update_server.roles import require_roles
+from update_server.extensions import db
+from update_server.models import Device, Tenant, Package, Rollout
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Flask / Extensions
 # ──────────────────────────────────────────────────────────────────────────────
@@ -394,29 +404,145 @@ def _sanitize_policy_json(raw: str) -> str:
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ Dashboard (tenant-scoped counts for non-admins)                          ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
+# update_server/admin/views.py
+
 @admin_bp.get("/")
 @login_required
 @require_roles("Viewer", "Ops", "Admin")
 def dashboard():
     """
-    Admins: global counts.
-    Non-admins: counts only for their tenant scope.
+    Admin: global counts + όλα τα connected devices (paginated).
+    Non-admin: counts & connected devices scoped στους tenant(s) του χρήστη.
+    Υποστηρίζει αναζήτηση ?q= (ID ή μέρος IP) και pagination ?page=&per=.
     """
+    # --- pagination & search params ---
+    page = request.args.get("page", default=1, type=int)
+    per_page = request.args.get("per", default=10, type=int)
+    per_page = max(5, min(per_page, 50))
+    q = (request.args.get("q") or "").strip()
+
+    # --- connected window (τελευταία 5') ---
+    now = dt.datetime.utcnow()
+    connected_since = now - dt.timedelta(minutes=5)
+
+    # --- δυναμικός εντοπισμός IP columns στο Device ---
+    ip_columns = []
+    for attr in ("ip", "ip_address", "last_ip", "last_seen_ip"):
+        if hasattr(Device, attr):
+            ip_columns.append(getattr(Device, attr))
+
+    # ασφαλές ip_eff για SQLite: 0/1/≥2 ορίσματα
+    if len(ip_columns) == 0:
+        ip_eff = literal_column("NULL")
+    elif len(ip_columns) == 1:
+        ip_eff = ip_columns[0]
+    else:
+        ip_eff = func.coalesce(*ip_columns)
+
+    # --- counts & base query, με scoping ανά ρόλο ---
     if _is_admin(current_user.id):
-        tenants = db.session.query(Tenant).count()
-        devices = db.session.query(Device).count()
-        pkgs = db.session.query(Package).count()
-        rollouts = db.session.query(Rollout).count()
+        tenants = db.session.query(func.count(Tenant.id)).scalar()
+        devices = db.session.query(func.count(Device.id)).scalar()
+        pkgs = db.session.query(func.count(Package.id)).scalar()
+        rollouts = db.session.query(func.count(Rollout.id)).scalar()
+
+        base = (
+            db.session.query(
+                Device,
+                ip_eff.label("ip_eff"),
+                Tenant.name.label("tenant_name"),
+                Tenant.slug.label("tenant_slug"),
+            )
+            .outerjoin(Tenant, Device.tenant_id == Tenant.id)
+            .filter(Device.last_seen_at >= connected_since)
+        )
     else:
         tids = _user_tenant_ids(current_user.id)
         if not tids:
             tenants = devices = pkgs = rollouts = 0
+            base = (
+                db.session.query(
+                    Device,
+                    ip_eff.label("ip_eff"),
+                    Tenant.name.label("tenant_name"),
+                    Tenant.slug.label("tenant_slug"),
+                )
+                .outerjoin(Tenant, Device.tenant_id == Tenant.id)
+                .filter(False)  # empty set
+            )
         else:
-            tenants = db.session.query(Tenant).filter(Tenant.id.in_(tids)).count()
-            devices = db.session.query(Device).filter(Device.tenant_id.in_(tids)).count()
-            pkgs = db.session.query(Package).filter(Package.tenant_id.in_(tids)).count()
-            rollouts = db.session.query(Rollout).filter(Rollout.tenant_id.in_(tids)).count()
-    return render_template("dashboard.html", tenants=tenants, devices=devices, pkgs=pkgs, rollouts=rollouts)
+            tenants = db.session.query(func.count(Tenant.id)).filter(Tenant.id.in_(tids)).scalar()
+            devices = db.session.query(func.count(Device.id)).filter(Device.tenant_id.in_(tids)).scalar()
+            pkgs = db.session.query(func.count(Package.id)).filter(Package.tenant_id.in_(tids)).scalar()
+            rollouts = db.session.query(func.count(Rollout.id)).filter(Rollout.tenant_id.in_(tids)).scalar()
+
+            base = (
+                db.session.query(
+                    Device,
+                    ip_eff.label("ip_eff"),
+                    Tenant.name.label("tenant_name"),
+                    Tenant.slug.label("tenant_slug"),
+                )
+                .outerjoin(Tenant, Device.tenant_id == Tenant.id)
+                .filter(Device.tenant_id.in_(tids), Device.last_seen_at >= connected_since)
+            )
+
+    # --- search filter (ID ή IP) ---
+    if q:
+        if q.isdigit():
+            base = base.filter(Device.id == int(q))
+        else:
+            ql = f"%{q.lower()}%"
+            like_clauses = [func.lower(col).like(ql) for col in ip_columns]
+            if like_clauses:
+                base = base.filter(or_(*like_clauses))
+            else:
+                # αν δεν υπάρχουν IP columns δεν μπορεί να εφαρμοστεί IP search
+                base = base.filter(False)
+
+    # --- ordering, pagination ---
+    base = base.order_by(Device.last_seen_at.desc())
+    total = base.count()
+    rows = base.offset((page - 1) * per_page).limit(per_page).all()
+
+    items = [
+        {"device": d, "ip_eff": ip, "tenant_name": tn, "tenant_slug": ts}
+        for (d, ip, tn, ts) in rows
+    ]
+
+    pages = (total + per_page - 1) // per_page
+    has_prev = page > 1
+    has_next = page < pages
+
+    def _page_url(p: int) -> str:
+        params = {"page": p, "per": per_page}
+        if q:
+            params["q"] = q
+        return url_for("admin.dashboard", **params)
+
+    devices_page = {
+        "items": items,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "pages": pages,
+        "has_prev": has_prev,
+        "has_next": has_next,
+        "prev_url": _page_url(page - 1) if has_prev else None,
+        "next_url": _page_url(page + 1) if has_next else None,
+    }
+
+    return render_template(
+        "dashboard.html",
+        tenants=tenants,
+        devices=devices,
+        pkgs=pkgs,
+        rollouts=rollouts,
+        devices_page=devices_page,
+        q=q,
+    )
+
+
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -429,9 +555,6 @@ def tenants_list():
     """
     List all tenants (Admin only).
     """
-    # HARD GUARD
-    if _is_admin(current_user.id):
-        abort(403, description="Admins cannot query devices")
     
     items = Tenant.query.order_by(Tenant.id.asc()).all()
     return render_template("tenants.html", items=items)
@@ -525,10 +648,38 @@ def tenants_update(t_id):
 def users_list():
     """
     List users + roles + tenants for creation UI.
+    Συμπληρώνει προσωρινά τυχόν κενά user.tenant_id από UserRole.tenant_id,
+    ώστε το template να εμφανίζει σωστά τον Tenant χωρίς αλλαγή δεδομένων.
     """
+    from update_server.extensions import db
+    from update_server.models import UserRole  # αποφεύγουμε κυκλικά imports
+
     users = User.query.order_by(User.id.asc()).all()
     roles = Role.query.order_by(Role.name.asc()).all()
     tenants = Tenant.query.order_by(Tenant.name.asc()).all()
+
+    # Χτίσε map user_id -> tenant_id από UserRole (παίρνουμε τον πρώτο που βρεθεί)
+    q = (
+        db.session.query(UserRole.user_id, UserRole.tenant_id)
+        .filter(UserRole.tenant_id.isnot(None))
+    )
+    ur_map = {}
+    for uid, tid in q.all():
+        if uid not in ur_map and tid is not None:
+            ur_map[uid] = tid
+
+    # Συμπλήρωσε προσωρινά μόνο για rendering (ΧΩΡΙΣ commit)
+    for u in users:
+        if getattr(u, "tenant_id", None) is None:
+            tid = ur_map.get(u.id)
+            if tid is not None:
+                try:
+                    # Θέλουμε μόνο να φανεί στο template· δεν κάνουμε persist.
+                    object.__setattr__(u, "tenant_id", tid)
+                except Exception:
+                    # Fallback αν ο mapper μπλοκάρει object.__setattr__
+                    setattr(u, "tenant_id", tid)
+
     return render_template("users.html", users=users, roles=roles, tenants=tenants)
 
 # tolerant alias
@@ -536,6 +687,7 @@ try:
     admin_bp.add_url_rule("/users", endpoint="users", view_func=users_list)
 except Exception:
     pass
+
 
 
 @admin_bp.post("/users")
@@ -1524,4 +1676,96 @@ def health_alias():
     Redirect to /health if you have a health endpoint registered elsewhere.
     """
     return redirect("/health")
+
+
+# ───────── helper κοινός για dashboard & fragment ─────────
+def _connected_devices_page(q: str, page: int, per_page: int, user_id: int):
+    import datetime as _dt
+    from sqlalchemy import func, or_, literal_column
+
+    connected_since = _dt.datetime.utcnow() - _dt.timedelta(minutes=5)
+
+    # ip columns → ip_eff (ασφαλές για SQLite)
+    ip_columns = [getattr(Device, a) for a in ("ip", "ip_address", "last_ip", "last_seen_ip") if hasattr(Device, a)]
+    if   len(ip_columns) == 0: ip_eff = literal_column("NULL")
+    elif len(ip_columns) == 1: ip_eff = ip_columns[0]
+    else:                      ip_eff = func.coalesce(*ip_columns)
+
+    if _is_admin(user_id):
+        base = (
+            db.session.query(
+                Device,
+                ip_eff.label("ip_eff"),
+                Tenant.name.label("tenant_name"),
+                Tenant.slug.label("tenant_slug"),
+            )
+            .outerjoin(Tenant, Device.tenant_id == Tenant.id)
+            .filter(Device.last_seen_at >= connected_since)
+        )
+    else:
+        tids = _user_tenant_ids(user_id)
+        if not tids:
+            base = (
+                db.session.query(
+                    Device,
+                    ip_eff.label("ip_eff"),
+                    Tenant.name.label("tenant_name"),
+                    Tenant.slug.label("tenant_slug"),
+                )
+                .outerjoin(Tenant, Device.tenant_id == Tenant.id)
+                .filter(False)
+            )
+        else:
+            base = (
+                db.session.query(
+                    Device,
+                    ip_eff.label("ip_eff"),
+                    Tenant.name.label("tenant_name"),
+                    Tenant.slug.label("tenant_slug"),
+                )
+                .outerjoin(Tenant, Device.tenant_id == Tenant.id)
+                .filter(Device.tenant_id.in_(tids), Device.last_seen_at >= connected_since)
+            )
+
+    if q:
+        if q.isdigit():
+            base = base.filter(Device.id == int(q))
+        else:
+            ql = f"%{q.lower()}%"
+            like_clauses = [func.lower(col).like(ql) for col in ip_columns]
+            base = base.filter(or_(*like_clauses)) if like_clauses else base.filter(False)
+
+    base = base.order_by(Device.last_seen_at.desc())
+    total = base.count()
+    rows  = base.offset((page - 1) * per_page).limit(per_page).all()
+    items = [{"device": d, "ip_eff": ip, "tenant_name": tn, "tenant_slug": ts} for (d, ip, tn, ts) in rows]
+    pages = (total + per_page - 1) // per_page
+
+    return {
+        "items": items,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "pages": pages,
+        "has_prev": page > 1,
+        "has_next": page < pages,
+        "prev_page": page - 1 if page > 1 else None,
+        "next_page": page + 1 if page < pages else None,
+    }
+
+# ───────── fragment route για AJAX ─────────
+@admin_bp.get("/connected-devices.fragment")
+@login_required
+@require_roles("Viewer", "Ops", "Admin")
+def connected_devices_fragment():
+    page = request.args.get("page", default=1, type=int)
+    per  = request.args.get("per",  default=10, type=int)
+    q    = (request.args.get("q") or "").strip()
+    per  = max(5, min(per, 50))
+
+    devices_page = _connected_devices_page(q=q, page=page, per_page=per, user_id=current_user.id)
+    # επιστρέφουμε ΜΟΝΟ το εσωτερικό της κάρτας
+    return render_template("partials/connected_devices_fragment.html",
+                           devices_page=devices_page, q=q)
+
 

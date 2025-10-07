@@ -1,4 +1,4 @@
-__version__ = "11.0.0"
+__version__ = "15.0.0"
 
 # app/__init__.py
 from update_server.version import __version__ as APP_VER

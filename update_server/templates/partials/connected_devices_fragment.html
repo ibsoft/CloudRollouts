@@ -1,0 +1,97 @@
+{# templates/partials/connected_devices_fragment.html #}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="card-title mb-0">
+    <i class="fa-solid fa-plug-circle-bolt me-1"></i>
+    Connected devices
+    <small class="text-muted">last 5 minutes</small>
+  </h5>
+  <div class="d-flex align-items-center gap-2">
+    <form id="cd-search" class="d-flex" role="search">
+      <input type="hidden" name="per" value="{{ devices_page.per_page }}">
+      <input class="form-control form-control-sm" type="search" name="q" placeholder="Search by ID or IP"
+             value="{{ q or '' }}" aria-label="Search" style="min-width: 220px;">
+      <button class="btn btn-sm btn-outline-primary ms-2" type="submit">
+        <i class="fa-solid fa-magnifying-glass"></i>
+      </button>
+      {% if q %}
+        <button class="btn btn-sm btn-outline-secondary ms-2" data-clear="1" type="button">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      {% endif %}
+    </form>
+    <div class="text-muted small ms-3">{{ devices_page.total }} total</div>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-hover align-middle mb-2">
+    <thead class="table-light">
+      <tr>
+        <th style="width: 56px;">ID</th>
+        <th><i class="fa-solid fa-desktop me-1"></i> Device</th>
+        <th class="d-none d-md-table-cell"><i class="fa-solid fa-building me-1"></i> Tenant</th>
+        <th class="d-none d-lg-table-cell"><i class="fa-solid fa-network-wired me-1"></i> IP</th>
+        <th style="width: 160px;"><i class="fa-regular fa-clock me-1"></i> Last seen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if devices_page['items'] %}
+        {% for r in devices_page['items'] %}
+          {% set d = r.device %}
+          <tr>
+            <td class="text-muted">{{ d.id }}</td>
+            <td>
+              <span class="fw-semibold">{{ d.name or ('Device #' ~ d.id) }}</span>
+              {% if d.status == 'online' %}
+                <span class="badge bg-success ms-2">online</span>
+              {% endif %}
+            </td>
+            <td class="d-none d-md-table-cell">
+              {% if r.tenant_name %}
+                <span class="badge text-bg-secondary">{{ r.tenant_name }}</span>
+                {% if r.tenant_slug %}<small class="text-muted ms-1">/{{ r.tenant_slug }}</small>{% endif %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td class="d-none d-lg-table-cell">
+              <span class="text-monospace">{{ r.ip_eff or d.ip or d.ip_address or d.last_ip or d.last_seen_ip or '—' }}</span>
+            </td>
+            <td>
+              {% if d.last_seen_at %}
+                <span title="{{ d.last_seen_at }}">{{ d.last_seen_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">
+            <i class="fa-regular fa-face-smile"></i> No connected devices in the selected window.
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<nav aria-label="Devices pagination" class="d-flex justify-content-between align-items-center">
+  <ul class="pagination mb-0">
+    <li class="page-item {% if not devices_page.has_prev %}disabled{% endif %}">
+      <a class="page-link" data-page="{{ devices_page.page - 1 if devices_page.has_prev else '' }}" href="#">
+        <i class="fa-solid fa-angles-left"></i>
+      </a>
+    </li>
+    <li class="page-item active"><span class="page-link">{{ devices_page.page }}</span></li>
+    <li class="page-item {% if not devices_page.has_next %}disabled{% endif %}">
+      <a class="page-link" data-page="{{ devices_page.page + 1 if devices_page.has_next else '' }}" href="#">
+        <i class="fa-solid fa-angles-right"></i>
+      </a>
+    </li>
+  </ul>
+  <div class="text-muted small">
+    Page {{ devices_page.page }} of {{ devices_page.pages }}
+  </div>
+</nav>

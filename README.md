@@ -1,6 +1,6 @@
 # CloudRollouts
 
-Multi-tenant update server για στόλους Windows/Linux. Admin UI (Bootstrap), agent API, artifacts με Range streaming, health/ready, metrics, Swagger, rate-limits, scheduler.
+Multi-tenant update server για στόλους Windows/Linux. Admin UI (Bootstrap), agent API, artifacts με Range streaming, health/ready, metrics, Swagger, rate-limits, scheduler, Prising, Prising API.
 
 
 

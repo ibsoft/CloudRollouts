@@ -8,10 +8,11 @@ Multi-tenant update server για στόλους Windows/Linux. Admin UI (Bootst
 
 <img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/5a91cdfa-7057-4a63-9b1b-6168b2317ee5" />
 
-
 <img width="1899" height="974" alt="image" src="https://github.com/user-attachments/assets/c938d8f6-5f24-4c1e-aba6-4fda43d04756" />
 
 <img width="1899" height="974" alt="image" src="https://github.com/user-attachments/assets/f6b04e7f-5f58-4bb7-a06a-3e7e58d92e5b" />
+
+<img width="1899" height="974" alt="image" src="https://github.com/user-attachments/assets/a9ab06e6-5129-4447-84da-668c1f372ac8" />
 
 <img width="1899" height="974" alt="image" src="https://github.com/user-attachments/assets/9369ec90-4a7d-4c7b-b219-683adf1e8977" />
 

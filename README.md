@@ -7,7 +7,6 @@ Multi-tenant update server για στόλους Windows. Admin UI (Bootstrap), 
 python -m venv .venv
 source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
 python manage.py db-init or flask db upgrade
 flask --app wsgi:app run -h 0.0.0.0 -p 8080
 ```
